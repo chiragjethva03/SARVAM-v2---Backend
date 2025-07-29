@@ -21,12 +21,15 @@ const postSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    likes: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
   },
-  {
-    timestamps: true, // adds createdAt and updatedAt
-  }
+  { timestamps: true }
 );
 
 const Post = mongoose.model("Post", postSchema);
-
 module.exports = Post;

@@ -229,14 +229,61 @@ app.post("/create-post", upload.single("image"), async (req, res) => {
 
 app.get("/posts", async (req, res) => {
   try {
+    const userId = req.query.userId;
     const posts = await Post.find()
-      .populate("userId", "fullName profilePicture") // Only populate user
+      .populate("userId", "fullName profilePicture")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ posts });
+    const postsWithLikes = posts.map((post) => {
+      const liked = userId
+        ? post.likes.some((id) => id.toString() === userId)
+        : false;
+
+      return {
+        ...post.toObject(),
+        likesCount: post.likes.length,
+        liked,
+      };
+    });
+
+    res.json({ posts: postsWithLikes });
   } catch (err) {
-    console.error("Error fetching posts:", err);
-    res.status(500).json({ message: "Failed to fetch posts" });
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+// POST /posts/:postId/like - toggle like
+app.post("/:postId/like", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const { postId } = req.params;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    const index = post.likes.findIndex(
+      (id) => id.toString() === userId.toString()
+    );
+
+    if (index === -1) {
+      post.likes.push(userId);
+    } else {
+      post.likes.splice(index, 1);
+    }
+
+    await post.save();
+
+    res.json({
+      likesCount: post.likes.length,
+      liked: index === -1,
+    });
+  } catch (error) {
+    console.error("Error toggling like:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
