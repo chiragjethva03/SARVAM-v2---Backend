@@ -1,11 +1,16 @@
-const Express = require("express");
 const dotenv = require("dotenv");
-require("dotenv").config();
+dotenv.config(); // Must be first!
+
+const Express = require("express");
 const cors = require("cors");
 const connectDB = require("./database/connection");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const User = require("./models/User");
+const cloudinary = require("./config/cloudinary.js");
+const upload = require("./middleware/multer.js");
+const Post = require("./models/Post.js");
+
 
 const app = Express();
 
@@ -42,8 +47,6 @@ app.post("/signup", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    console.log(token);
-
     return res.json({
       message: "Signup is done",
       token,
@@ -51,6 +54,7 @@ app.post("/signup", async (req, res) => {
         id: newUser._id,
         fullName: newUser.fullName,
         email: newUser.email,
+        profilePicture: "", // Added for consistency
       },
     });
   } catch (err) {
@@ -58,6 +62,7 @@ app.post("/signup", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 app.post("/login", async (req, res) => {
   try {
@@ -67,6 +72,14 @@ app.post("/login", async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ message: "Invalid email or password" });
+    }
+
+    // If the account was created with Google (no password set)
+    if (!user.password) {
+      return res.status(400).json({
+        message:
+          "This account was created using Google Sign-In. Please login with Google.",
+      });
     }
 
     // Compare password
@@ -89,6 +102,7 @@ app.post("/login", async (req, res) => {
         id: user._id,
         fullName: user.fullName,
         email: user.email,
+        profilePicture: user.profilePicture || "",
       },
     });
   } catch (err) {
@@ -96,6 +110,7 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // GOOGLE SIGN-IN API
 app.post("/google-signin", async (req, res) => {
@@ -152,6 +167,76 @@ app.post("/google-signin", async (req, res) => {
   } catch (err) {
     console.error("Google Sign-in error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+}); 
+
+app.post("/create-post", upload.single("image"), async (req, res) => {
+  try {
+    const { description, location, userId } = req.body;
+
+    if (!description || !location || !userId) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No image provided" });
+    }
+
+    // Upload image to Cloudinary
+    const streamUpload = (fileBuffer) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: "sarvam_posts" },
+          (error, result) => {
+            if (error) {
+              return reject(error);
+            }
+            resolve(result);
+          }
+        );
+        stream.end(fileBuffer);
+      });
+    };
+
+    const result = await streamUpload(req.file.buffer);
+
+    // 3. Save Post in MongoDB
+    const newPost = new Post({
+      userId,
+      description,
+      location,
+      imageUrl: result.secure_url,
+    });
+
+    await newPost.save();
+
+    // 4. Update user's postIDs array
+    await User.findByIdAndUpdate(
+      userId,
+      { $push: { postIDs: newPost._id } },
+      { new: true }
+    );
+
+    return res.status(201).json({
+      message: "Post created successfully",
+      post: newPost,
+    });
+  } catch (err) {
+    console.error("Error creating post:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.get("/posts", async (req, res) => {
+  try {
+    const posts = await Post.find()
+      .populate("userId", "fullName profilePicture") // Only populate user
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ posts });
+  } catch (err) {
+    console.error("Error fetching posts:", err);
+    res.status(500).json({ message: "Failed to fetch posts" });
   }
 });
 
