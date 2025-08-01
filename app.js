@@ -11,6 +11,7 @@ const cloudinary = require("./config/cloudinary.js");
 const upload = require("./middleware/multer.js");
 const Post = require("./models/Post.js");
 const protect = require("./middleware/authMiddleware.js")
+const authMiddleware = require("./middleware/authMiddleware.js")
 
 
 const app = Express();
@@ -231,9 +232,12 @@ app.post("/create-post", upload.single("image"), async (req, res) => {
 app.get("/posts", async (req, res) => {
   try {
     const userId = req.query.userId;
-    const posts = await Post.find()
+    let posts = await Post.find()
       .populate("userId", "fullName profilePicture")
       .sort({ createdAt: -1 });
+
+    // Filter out posts with missing user
+    posts = posts.filter(post => post.userId && typeof post.userId === 'object');
 
     const postsWithLikes = posts.map((post) => {
       const liked = userId
@@ -253,6 +257,8 @@ app.get("/posts", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
 
 
 // POST /posts/:postId/like - toggle like
@@ -317,6 +323,54 @@ app.delete("/user/delete", protect, async (req, res) => {
   }
 });
 
+app.get('/posts/my', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('postIDs');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Find posts using postIDs stored in user document
+    const posts = await Post.find({ _id: { $in: user.postIDs } })
+      .sort({ createdAt: -1 });
+
+    return res.json({ posts });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+
+app.delete('/posts/:id', authMiddleware, async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    // Ensure post belongs to the user
+    if (post.userId.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized to delete' });
+    }
+
+    // Delete post
+    await Post.findByIdAndDelete(req.params.id);
+
+    // Remove postId from user's postIDs array
+    await User.findByIdAndUpdate(req.user.id, {
+      $pull: { postIDs: req.params.id },
+    });
+
+    return res.json({ message: 'Post deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
 
 
 app.get("/", (req, res) => {
