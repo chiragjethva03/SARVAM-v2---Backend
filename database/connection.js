@@ -3,10 +3,7 @@ const mongoose = require('mongoose');
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_ATLAS, {
-      // TLS is enabled automatically for Atlas
-      tls: true,
-      tlsInsecure: false, // set to true ONLY if you want to skip certificate validation (not recommended)
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 5000, // 5s
     });
 
     console.log("MongoDB Connected");

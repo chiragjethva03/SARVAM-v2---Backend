@@ -10,6 +10,7 @@ const User = require("./models/User");
 const cloudinary = require("./config/cloudinary.js");
 const upload = require("./middleware/multer.js");
 const Post = require("./models/Post.js");
+const protect = require("./middleware/authMiddleware.js")
 
 
 const app = Express();
@@ -286,6 +287,36 @@ app.post("/:postId/like", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+// GET /api/user/me
+app.get("/user/me", protect, async (req, res) => {
+  try {
+    // req.user is set by protect middleware
+    res.json(req.user); // send full user data except password
+  } catch (err) {
+    console.error("Error in /api/user/me:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.delete("/user/delete", protect, async (req, res) => {
+  try {
+    const userId = req.user._id; // set in protect middleware
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await User.findByIdAndDelete(userId);
+
+    res.json({ message: "Account deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting account:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 
 
 app.get("/", (req, res) => {
