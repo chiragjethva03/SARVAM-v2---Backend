@@ -1,5 +1,5 @@
 const dotenv = require("dotenv");
-dotenv.config(); // Must be first!
+dotenv.config(); // Load env first!
 
 const Express = require("express");
 const cors = require("cors");
@@ -10,17 +10,19 @@ const User = require("./models/User");
 const cloudinary = require("./config/cloudinary.js");
 const upload = require("./middleware/multer.js");
 const Post = require("./models/Post.js");
-const protect = require("./middleware/authMiddleware.js")
-const authMiddleware = require("./middleware/authMiddleware.js")
-
+const protect = require("./middleware/authMiddleware.js");
+const authMiddleware = require("./middleware/authMiddleware.js");
 
 const app = Express();
 
+// Middlewares
 app.use(Express.json());
 app.use(cors());
 
+// Connect DB
 connectDB();
 
+// --- SIGNUP ---
 app.post("/signup", async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
@@ -30,19 +32,16 @@ app.post("/signup", async (req, res) => {
       return res.status(400).json({ message: "All fields required" });
     }
 
-    // Check for duplicate email
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "Email already registered" });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = new User({ fullName, email, password: hashedPassword });
     await newUser.save();
 
-    // Create JWT token
     const token = jwt.sign(
       { id: newUser._id, email: newUser.email },
       process.env.JWT_SECRET || "secretkey",
@@ -56,16 +55,16 @@ app.post("/signup", async (req, res) => {
         id: newUser._id,
         fullName: newUser.fullName,
         email: newUser.email,
-        profilePicture: "", // Added for consistency
+        profilePicture: "",
       },
     });
   } catch (err) {
     console.error("Signup error:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-
+// --- LOGIN ---
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -76,7 +75,6 @@ app.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    // If the account was created with Google (no password set)
     if (!user.password) {
       return res.status(400).json({
         message:
@@ -84,20 +82,18 @@ app.post("/login", async (req, res) => {
       });
     }
 
-    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    // Create JWT
     const token = jwt.sign(
       { id: user._id, email: user.email },
       process.env.JWT_SECRET || "secretkey",
       { expiresIn: "7d" }
     );
 
-    res.json({
+    return res.json({
       message: "Login successful",
       token,
       user: {
@@ -109,25 +105,22 @@ app.post("/login", async (req, res) => {
     });
   } catch (err) {
     console.error("Login error:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-
-// GOOGLE SIGN-IN API
+// --- GOOGLE SIGN-IN ---
 app.post("/google-signin", async (req, res) => {
   try {
-    const { fullName, email, googleId, profilePicture, authProvider } = req.body;
+    const { fullName, email, googleId, profilePicture } = req.body;
 
     if (!email || !googleId) {
       return res.status(400).json({ message: "Invalid Google user data" });
     }
 
-    // Check if user exists
     let user = await User.findOne({ email });
 
     if (!user) {
-      // Create new user
       user = new User({
         fullName,
         email,
@@ -140,7 +133,6 @@ app.post("/google-signin", async (req, res) => {
       });
       await user.save();
     } else {
-      // Update details if user already exists
       user.googleId = googleId;
       user.profilePicture = profilePicture;
       user.authProvider = "google";
@@ -148,14 +140,13 @@ app.post("/google-signin", async (req, res) => {
       await user.save();
     }
 
-    // Generate JWT
     const token = jwt.sign(
       { id: user._id, email: user.email },
       process.env.JWT_SECRET || "secretkey",
       { expiresIn: "7d" }
     );
 
-    res.json({
+    return res.json({
       message: "Google sign-in successful",
       token,
       user: {
@@ -168,10 +159,11 @@ app.post("/google-signin", async (req, res) => {
     });
   } catch (err) {
     console.error("Google Sign-in error:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
-}); 
+});
 
+// --- CREATE POST ---
 app.post("/create-post", upload.single("image"), async (req, res) => {
   try {
     const { description, location, userId } = req.body;
@@ -184,15 +176,12 @@ app.post("/create-post", upload.single("image"), async (req, res) => {
       return res.status(400).json({ message: "No image provided" });
     }
 
-    // Upload image to Cloudinary
     const streamUpload = (fileBuffer) => {
       return new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           { folder: "sarvam_posts" },
           (error, result) => {
-            if (error) {
-              return reject(error);
-            }
+            if (error) return reject(error);
             resolve(result);
           }
         );
@@ -202,7 +191,6 @@ app.post("/create-post", upload.single("image"), async (req, res) => {
 
     const result = await streamUpload(req.file.buffer);
 
-    // 3. Save Post in MongoDB
     const newPost = new Post({
       userId,
       description,
@@ -212,7 +200,6 @@ app.post("/create-post", upload.single("image"), async (req, res) => {
 
     await newPost.save();
 
-    // 4. Update user's postIDs array
     await User.findByIdAndUpdate(
       userId,
       { $push: { postIDs: newPost._id } },
@@ -225,10 +212,11 @@ app.post("/create-post", upload.single("image"), async (req, res) => {
     });
   } catch (err) {
     console.error("Error creating post:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
+// --- FETCH POSTS ---
 app.get("/posts", async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -236,8 +224,9 @@ app.get("/posts", async (req, res) => {
       .populate("userId", "fullName profilePicture")
       .sort({ createdAt: -1 });
 
-    // Filter out posts with missing user
-    posts = posts.filter(post => post.userId && typeof post.userId === 'object');
+    posts = posts.filter(
+      (post) => post.userId && typeof post.userId === "object"
+    );
 
     const postsWithLikes = posts.map((post) => {
       const liked = userId
@@ -251,17 +240,14 @@ app.get("/posts", async (req, res) => {
       };
     });
 
-    res.json({ posts: postsWithLikes });
+    return res.json({ posts: postsWithLikes });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-
-
-
-// POST /posts/:postId/like - toggle like
+// --- TOGGLE LIKE ---
 app.post("/:postId/like", async (req, res) => {
   try {
     const { userId } = req.body;
@@ -284,31 +270,30 @@ app.post("/:postId/like", async (req, res) => {
 
     await post.save();
 
-    res.json({
+    return res.json({
       likesCount: post.likes.length,
       liked: index === -1,
     });
   } catch (error) {
     console.error("Error toggling like:", error);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-// GET /api/user/me
+// --- USER ME ---
 app.get("/user/me", protect, async (req, res) => {
   try {
-    // req.user is set by protect middleware
-    res.json(req.user); // send full user data except password
+    return res.json(req.user);
   } catch (err) {
     console.error("Error in /api/user/me:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
+// --- DELETE ACCOUNT ---
 app.delete("/user/delete", protect, async (req, res) => {
   try {
-    const userId = req.user._id; // set in protect middleware
-
+    const userId = req.user._id;
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -316,65 +301,142 @@ app.delete("/user/delete", protect, async (req, res) => {
 
     await User.findByIdAndDelete(userId);
 
-    res.json({ message: "Account deleted successfully" });
+    return res.json({ message: "Account deleted successfully" });
   } catch (err) {
     console.error("Error deleting account:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-app.get('/posts/my', authMiddleware, async (req, res) => {
+// --- MY POSTS ---
+app.get("/posts/my", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('postIDs');
-
+    const user = await User.findById(req.user.id).select("postIDs");
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
-    // Find posts using postIDs stored in user document
-    const posts = await Post.find({ _id: { $in: user.postIDs } })
-      .sort({ createdAt: -1 });
+    const posts = await Post.find({ _id: { $in: user.postIDs } }).sort({
+      createdAt: -1,
+    });
 
     return res.json({ posts });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-
-
-app.delete('/posts/:id', authMiddleware, async (req, res) => {
+// --- DELETE POST ---
+app.delete("/posts/:id", authMiddleware, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-
     if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
+      return res.status(404).json({ message: "Post not found" });
     }
 
-    // Ensure post belongs to the user
     if (post.userId.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized to delete' });
+      return res.status(403).json({ message: "Not authorized to delete" });
     }
 
-    // Delete post
     await Post.findByIdAndDelete(req.params.id);
 
-    // Remove postId from user's postIDs array
     await User.findByIdAndUpdate(req.user.id, {
       $pull: { postIDs: req.params.id },
     });
 
-    return res.json({ message: 'Post deleted successfully' });
+    return res.json({ message: "Post deleted successfully" });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// --- UPDATE DETAILS ---
+app.put("/user/update-details", protect, async (req, res) => {
+  try {
+    const { fullName, mobileNumber } = req.body;
+
+    req.user.fullName = fullName;
+    if (!req.user.mobileNumber) {
+      req.user.mobileNumber = mobileNumber;
+    }
+    await req.user.save();
+
+    return res.json({ success: true, user: req.user });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
 
+// Change Password
+
+app.put("/user/change-password", protect, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
+    }
+
+    // Fetch fresh user from DB with password field included
+    const user = await User.findById(req.user._id).select("+password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // If the user signed up with Google
+    if (!user.password) {
+      return res.status(400).json({
+        success: false,
+        message: "Password change not available for Google Sign-in users",
+      });
+    }
+
+    // Compare current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is incorrect",
+      });
+    }
+
+    // Hash and update new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password updated successfully",
+    });
+  } catch (error) {
+    console.error("Error changing password:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+});
+
+
+
+
+
+// --- ROOT ENDPOINT ---
 app.get("/", (req, res) => {
-  res.send("requested accepted.!");
+  return res.send("requested accepted.!");
 });
 
 app.listen(3000, () => {
