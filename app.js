@@ -355,20 +355,29 @@ app.delete("/posts/:id", authMiddleware, async (req, res) => {
 // --- UPDATE DETAILS ---
 app.put("/user/update-details", protect, async (req, res) => {
   try {
-    const { fullName, mobileNumber } = req.body;
+    const { fullName, phoneNumber } = req.body;
+
+    if (!fullName) {
+      return res.status(400).json({ message: "Full name is required" });
+    }
 
     req.user.fullName = fullName;
-    if (!req.user.mobileNumber) {
-      req.user.mobileNumber = mobileNumber;
+
+    if (phoneNumber) {
+      req.user.phoneNumber = phoneNumber; // ✅ correct field
     }
+
     await req.user.save();
 
-    return res.json({ success: true, user: req.user });
+    return res.json({ success: true, user: req.user }); // ✅ sends updated user
   } catch (err) {
-    console.error(err);
+    console.error("Error in update-details:", err);
     return res.status(500).json({ message: "Server error" });
   }
 });
+
+
+
 
 
 // Change Password
@@ -430,8 +439,45 @@ app.put("/user/change-password", protect, async (req, res) => {
   }
 });
 
+// --- UPLOAD PROFILE PICTURE ---
+app.post("/user/upload-profile-picture", protect, upload.single("profilePicture"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
 
+    const streamUpload = (fileBuffer) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: "sarvam_profiles",
+            resource_type: "image",
+          },
+          (error, result) => {
+            if (error) return reject(error);
+            resolve(result);
+          }
+        );
+        stream.end(fileBuffer);
+      });
+    };
 
+    const result = await streamUpload(req.file.buffer);
+
+    const user = await User.findById(req.user._id);
+    user.profilePicture = result.secure_url;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture updated successfully",
+      profilePicture: result.secure_url,
+    });
+  } catch (error) {
+    console.error("Error uploading profile picture:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
 
 
 // --- ROOT ENDPOINT ---
