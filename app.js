@@ -485,10 +485,7 @@ app.get("/", (req, res) => {
   return res.send("requested accepted.!");
 });
 
-app.get("*", (req, res) => {
-  res.send("invalid routes")
-})
 
 app.listen(3000, () => {
-  console.log("server start at port number");
+  console.log("server start at port 3000 number");
 });
