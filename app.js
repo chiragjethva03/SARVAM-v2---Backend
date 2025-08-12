@@ -439,6 +439,7 @@ app.put("/user/change-password", protect, async (req, res) => {
   }
 });
 
+// upload here
 // --- UPLOAD PROFILE PICTURE ---
 app.post("/user/upload-profile-picture", protect, upload.single("profilePicture"), async (req, res) => {
   try {
