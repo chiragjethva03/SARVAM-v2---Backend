@@ -32,9 +32,6 @@ app.get("/", (req, res) => {
   return res.send("requested accepted.!");
 });
 
-app.get("*", (req, res, next)=> {
-  res.send("request danied.!")
-})
 
 app.listen(3000, () => {
   console.log("server start at port 3000 number");
