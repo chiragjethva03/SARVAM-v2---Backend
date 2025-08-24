@@ -33,6 +33,10 @@ app.get("/", (req, res) => {
 });
 
 
+app.use("*", (req, res) => {
+  res.send("page not found");
+})
+
 app.listen(3000, () => {
   console.log("server start at port 3000 number");
 });
