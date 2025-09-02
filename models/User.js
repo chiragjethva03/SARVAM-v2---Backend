@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const Expense = require("./Expense");
 
 const userSchema = new mongoose.Schema(
   {
@@ -7,10 +8,9 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    expense: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Expense"
-    },
+    expenses: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Expense" }
+    ],
     email: {
       type: String,
       required: true,
