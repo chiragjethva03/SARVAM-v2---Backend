@@ -6,11 +6,11 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 5000, // 5s
     });
 
-    console.log("MongoDB Connected");
-  } catch (error) {
-    console.error("Database connection error:", error);
-    process.exit(1);
-  }
+  console.log("MongoDB Connected");
+} catch (error) {
+  console.error("Database connection error:", error);
+  process.exit(1);
+}
 };
 
 module.exports = connectDB;

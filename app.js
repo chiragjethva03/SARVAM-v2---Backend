@@ -86,11 +86,53 @@ app.get("/api/expenses/my-groups", async (req, res) => {
   }
 });
 
+app.get("/api/expenses/groups/:id", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+
+    // Find group and populate expenses
+    const group = await Expense.findById(groupId)
+      .populate({
+        path: "expenses",
+        model: Expense,
+      })
+      .lean();
+
+    if (!group) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    // Structure response to match Flutter needs
+    res.json({
+      _id: group._id,
+      groupName: group.groupName,
+      createdBy: group.createdBy,
+      members: group.members,
+      expenses: group.expenses.map((e) => ({
+        _id: e._id,
+        title: e.title,
+        amount: e.amount,
+        category: e.category,
+        paidBy: e.paidBy,
+        splitType: e.splitType,
+        splitBetween: e.splitBetween,
+        createdAt: e.createdAt,
+      })),
+      createdAt: group.createdAt,
+    });
+  } catch (err) {
+    console.error("Error fetching group:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
 
 // --- ROOT ENDPOINT --- //
 app.get("/", (req, res) => {
   return res.send("requested accepted.!");
 });
+
 
 app.listen(3000, () => {
   console.log("server start at port 3000 number");
