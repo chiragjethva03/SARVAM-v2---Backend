@@ -39,22 +39,44 @@ app.post("/api/expenses/group-with-expense", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // ✅ create proper ObjectId
     const creatorId = new mongoose.Types.ObjectId(createdBy);
-    
+
+    // 1️⃣ Create the group with first expense
     const newExpenseDoc = new Expense({
       groupName,
       createdBy: creatorId,
       members,
       expenses: [expense],
     });
-
     await newExpenseDoc.save();
 
-    // ✅ add back-reference to User
-    await User.updateOne(
-      { _id: creatorId },
-      { $addToSet: { expenses: newExpenseDoc._id } } // use "expenses" array field
+    // 2️⃣ Collect all participant IDs
+    const participantIds = [creatorId];
+
+    // 2a️⃣ Members with userId
+    members.forEach((m) => {
+      if (m.userId) participantIds.push(new mongoose.Types.ObjectId(m.userId));
+    });
+
+    // 2b️⃣ Members with only mobile
+    const mobileMembers = members.filter((m) => !m.userId && m.mobile);
+    if (mobileMembers.length) {
+      const mobiles = mobileMembers.map((m) =>
+        (m.mobile + "").replace(/\D/g, "").slice(-10) // assuming 10-digit local numbers
+      );
+
+      // Find users in one query
+      const users = await User.find({
+        phoneNumber: { $in: mobiles }
+      }).select("_id").lean();
+
+      users.forEach((u) => participantIds.push(u._id));
+    }
+
+    // 3️⃣ Update all participants with this expense
+    await User.updateMany(
+      { _id: { $in: participantIds } },
+      { $addToSet: { expenses: newExpenseDoc._id } }
     );
 
     return res.status(201).json(newExpenseDoc);
@@ -63,6 +85,9 @@ app.post("/api/expenses/group-with-expense", async (req, res) => {
     return res.status(500).json({ error: "Server error", details: err.message });
   }
 });
+
+
+
 
 // GET /api/expenses/my-groups?userId=...&/or mobile=...
 app.get("/api/expenses/my-groups", async (req, res) => {
@@ -118,6 +143,7 @@ app.get("/api/expenses/groups/:id", async (req, res) => {
         splitBetween: e.splitBetween,
         createdAt: e.createdAt,
       })),
+      groupId: group.groupId,
       createdAt: group.createdAt,
     });
   } catch (err) {
@@ -125,6 +151,31 @@ app.get("/api/expenses/groups/:id", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+app.delete("/api/expenses/delete/:id", async (req, res) => {
+  const groupId = req.params.id; // ✅ now this will get the actual group ID
+  console.log("Deleting group with ID:", groupId);
+  try {
+    // Find and delete the group
+    const deletedGroup = await Expense.findByIdAndDelete(groupId);
+
+    if (!deletedGroup) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    // Remove the group ID from all users’ expenses
+    await User.updateMany(
+      { expenses: groupId },
+      { $pull: { expenses: groupId } }
+    );
+
+    res.json({ message: "Group deleted successfully", group: deletedGroup });
+  } catch (err) {
+    console.error("Error deleting group:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 
 
@@ -137,3 +188,4 @@ app.get("/", (req, res) => {
 app.listen(3000, () => {
   console.log("server start at port 3000 number");
 });
+
