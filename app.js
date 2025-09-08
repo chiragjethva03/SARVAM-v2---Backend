@@ -178,9 +178,82 @@ app.delete("/api/expenses/delete/:id", async (req, res) => {
 
 
 app.post("/api/expenses/joingroup", async (req, res) => {
-  console.log("group id is:", req.body);
-  res.send("Join group endpoint hit");
+  try {
+    const { groupId, userId, name, mobile } = req.body;
+    console.log("Join group request:", req.body);
+
+    // ✅ Custom validations
+    if (!groupId) {
+      return res.status(400).json({ error: "Group ID is required" });
+    }
+    if (!name) {
+      return res.status(400).json({ error: "User name is required" });
+    }
+    if (!mobile) {
+      return res.status(400).json({ error: "Set your mobile number first" });
+    }
+
+    // 1️⃣ Find the group by either _id or custom groupId
+    let group;
+    if (mongoose.Types.ObjectId.isValid(groupId)) {
+      group = await Expense.findById(groupId);
+    } else {
+      group = await Expense.findOne({ groupId });
+    }
+
+    if (!group) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    // 2️⃣ Prepare participant object
+    const participant = {
+      name,
+      mobile: (mobile + "").replace(/\D/g, "").slice(-10),
+    };
+    if (userId) participant.userId = new mongoose.Types.ObjectId(userId);
+
+    // 3️⃣ Add to group.members if not already present
+    const exists = group.members.some(
+      (m) =>
+        (m.userId && m.userId.toString() === (userId || "")) ||
+        (m.mobile && m.mobile === participant.mobile)
+    );
+    if (!exists) {
+      group.members.push(participant);
+      await group.save();
+    }
+
+    // 4️⃣ Update User.expenses
+    if (userId) {
+      await User.updateOne(
+        { _id: userId },
+        { $addToSet: { expenses: group._id } }
+      );
+    } else {
+      const user = await User.findOne({ phoneNumber: participant.mobile });
+      if (user) {
+        await User.updateOne(
+          { _id: user._id },
+          { $addToSet: { expenses: group._id } }
+        );
+      }
+    }
+
+    res.json({
+      message: "Joined group successfully",
+      groupId: group.groupId, // return your custom groupId
+      participant,
+    });
+  } catch (err) {
+    console.error("Error joining group:", err);
+    res
+      .status(500)
+      .json({ error: "Internal server error", details: err.message });
+  }
 });
+
+
+
 
 
 
