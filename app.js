@@ -176,7 +176,9 @@ app.delete("/api/expenses/delete/:id", async (req, res) => {
   }
 });
 
+
 app.post("/api/expenses/joingroup", async (req, res) => {
+  console.log("group id is:", req.body);
   res.send("Join group endpoint hit");
 });
 
