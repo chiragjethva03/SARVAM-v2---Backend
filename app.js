@@ -87,8 +87,6 @@ app.post("/api/expenses/group-with-expense", async (req, res) => {
 });
 
 
-
-
 // GET /api/expenses/my-groups?userId=...&/or mobile=...
 app.get("/api/expenses/my-groups", async (req, res) => {
   try {
@@ -115,11 +113,15 @@ app.get("/api/expenses/groups/:id", async (req, res) => {
   try {
     const groupId = req.params.id;
 
-    // Find group and populate expenses
+    // Find group and populate user details inside expenses
     const group = await Expense.findById(groupId)
       .populate({
         path: "expenses",
         model: Expense,
+        populate: [
+          { path: "paidBy.userId", select: "mobile fullName" },
+          { path: "splitBetween.userId", select: "mobile fullName" },
+        ],
       })
       .lean();
 
@@ -138,9 +140,18 @@ app.get("/api/expenses/groups/:id", async (req, res) => {
         title: e.title,
         amount: e.amount,
         category: e.category,
-        paidBy: e.paidBy,
+        paidBy: {
+          userId: e.paidBy?.userId?._id,
+          mobile: e.paidBy?.userId?.mobile,
+          fullName: e.paidBy?.userId?.fullName,
+        },
         splitType: e.splitType,
-        splitBetween: e.splitBetween,
+        splitBetween: e.splitBetween.map((s) => ({
+          userId: s.userId?._id,
+          mobile: s.userId?.mobile,
+          fullName: s.userId?.fullName,
+          shareAmount: s.shareAmount,
+        })),
         createdAt: e.createdAt,
       })),
       groupId: group.groupId,
@@ -151,6 +162,7 @@ app.get("/api/expenses/groups/:id", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 app.delete("/api/expenses/delete/:id", async (req, res) => {
   const groupId = req.params.id; // ✅ now this will get the actual group ID
@@ -255,7 +267,9 @@ app.post("/api/expenses/joingroup", async (req, res) => {
 
 
 
-
+app.get("*", (req, res) => {
+  return res.status(404).json({ error: "Route not found" });
+});
 
 
 // --- ROOT ENDPOINT --- //
