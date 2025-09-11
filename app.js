@@ -267,11 +267,6 @@ app.post("/api/expenses/joingroup", async (req, res) => {
 
 
 
-app.get("*", (req, res) => {
-  return res.status(404).json({ error: "Route not found" });
-});
-
-
 // --- ROOT ENDPOINT --- //
 app.get("/", (req, res) => {
   return res.send("requested accepted.!");
