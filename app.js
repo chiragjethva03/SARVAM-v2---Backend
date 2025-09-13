@@ -31,6 +31,54 @@ app.use("/", postRoutes);
 const userRoutes = require("./routes/user.js");
 app.use("/user", userRoutes);
 
+app.post("/validate-email", async (req, res) => {
+  try {
+    const { email } = req.body;
+    console.log("Validating email:", email);
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email required" });
+    }
+
+    const user = await User.findOne({ email: email.trim() });
+
+    if (!user) {
+      return res.json({
+        success: false,
+        action: "not_found",
+        message: "Email not registered",
+      });
+    }
+
+    if (user.authProvider === "google") {
+      return res.json({
+        success: true,
+        action: "google",
+        message:
+          "This account was created using Google. Please sign in with Google.",
+      });
+    }
+
+    if (user.authProvider === "manual") {
+      // here you will send OTP later
+      return res.json({
+        success: true,
+        action: "manual",
+        message: "OTP sent to email (static for now).",
+      });
+    }
+
+    return res.json({
+      success: false,
+      action: "unknown",
+      message: "Auth provider not recognized.",
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
 app.post("/api/expenses/group-with-expense", async (req, res) => {
   try {
     const { groupName, createdBy, members = [], expense } = req.body;
