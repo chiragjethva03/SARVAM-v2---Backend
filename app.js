@@ -1,8 +1,13 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // temp if needed
+process.env.NODE_OPTIONS = "--tls-min-v1.2";
+
+
 const dotenv = require("dotenv");
 const Expense = require('./models/Expense.js');
 dotenv.config(); // Load env first!
 const mongoose = require("mongoose");
 const User = require("./models/User.js");
+const {generateOtp, sendOtpEmail} = require("./utils/sendOtp.js");
 
 
 const Express = require("express");
@@ -37,7 +42,9 @@ app.post("/validate-email", async (req, res) => {
     console.log("Validating email:", email);
 
     if (!email) {
-      return res.status(400).json({ success: false, message: "Email required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Email required" });
     }
 
     const user = await User.findOne({ email: email.trim() });
@@ -60,12 +67,29 @@ app.post("/validate-email", async (req, res) => {
     }
 
     if (user.authProvider === "manual") {
-      // here you will send OTP later
-      return res.json({
-        success: true,
-        action: "manual",
-        message: "OTP sent to email (static for now).",
-      });
+      // generate OTP
+      const otp = generateOtp();
+
+      // TODO: save OTP securely (DB or cache) with expiry
+      user.resetOtp = otp;
+      user.resetOtpExpiry = Date.now() + 10 * 60 * 1000; // 10 min validity
+      await user.save();
+
+      try {
+        await sendOtpEmail(email, otp);
+        return res.json({
+          success: true,
+          action: "manual",
+          message: "OTP sent to your email.",
+        });
+      } catch (mailError) {
+        console.error("Error sending OTP:", mailError);
+        return res.json({
+          success: false,
+          action: "manual",
+          message: "Failed to send OTP. Try again later.",
+        });
+      }
     }
 
     return res.json({
@@ -75,7 +99,9 @@ app.post("/validate-email", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error, please try again" });
   }
 });
 

@@ -1,16 +1,13 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_ATLAS, {
       serverSelectionTimeoutMS: 5000,
-      ssl: true,
-      tlsAllowInvalidCertificates: false,
     });
-
-    console.log("MongoDB Connected");
+    console.log("✅ MongoDB Connected");
   } catch (error) {
-    console.error("Database connection error:", error);
+    console.error("❌ Database connection error:", error.message);
     process.exit(1);
   }
 };

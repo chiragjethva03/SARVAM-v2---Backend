@@ -64,6 +64,14 @@ const userSchema = new mongoose.Schema(
       type: String, // store google's sub ID
       default: null,
     },
+    otp: {
+      type: String,
+      default: null,
+    },
+    otpExpiry: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true, // automatically adds createdAt and updatedAt
