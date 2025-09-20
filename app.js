@@ -338,11 +338,6 @@ app.post("/api/expenses/joingroup", async (req, res) => {
   }
 });
 
-app.get("*", (req, res, next) => {
-  res.send("page not found 404");
-})
-
-
 // --- ROOT ENDPOINT --- //
 app.get("/", (req, res) => {
   return res.send("requested accepted.!");
