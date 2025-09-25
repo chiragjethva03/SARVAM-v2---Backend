@@ -8,6 +8,7 @@ dotenv.config(); // Load env first!
 const mongoose = require("mongoose");
 const User = require("./models/User.js");
 const {generateOtp, sendOtpEmail} = require("./utils/sendOtp.js");
+const bcrypt = require("bcrypt");
 
 
 const Express = require("express");
@@ -35,6 +36,8 @@ app.use("/", postRoutes);
 // --- USER routes --- //
 const userRoutes = require("./routes/user.js");
 app.use("/user", userRoutes);
+
+
 
 app.post("/validate-email", async (req, res) => {
   try {
@@ -68,15 +71,15 @@ app.post("/validate-email", async (req, res) => {
 
     if (user.authProvider === "manual") {
       // generate OTP
-      const otp = generateOtp();
+      const otp = generateOtp(); // e.g., 4-6 digit random number
 
-      // TODO: save OTP securely (DB or cache) with expiry
-      user.resetOtp = otp;
-      user.resetOtpExpiry = Date.now() + 10 * 60 * 1000; // 10 min validity
+      // save OTP & expiry in DB
+      user.otp = otp;
+      user.otpExpiry = Date.now() + 10 * 60 * 1000; // 10 min expiry
       await user.save();
 
       try {
-        await sendOtpEmail(email, otp);
+        await sendOtpEmail(email, otp); // send email
         return res.json({
           success: true,
           action: "manual",
@@ -102,6 +105,93 @@ app.post("/validate-email", async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: "Server error, please try again" });
+  }
+});
+
+app.post("/verify-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and OTP are required" });
+    }
+
+    const user = await User.findOne({ email: email.trim() });
+
+    if (!user) {
+      return res.json({ success: false, message: "Email not registered" });
+    }
+
+    // Check if OTP exists & not expired
+    if (!user.otp || !user.otpExpiry || Date.now() > user.otpExpiry) {
+      return res.json({
+        success: false,
+        message: "OTP expired or not found. Please request a new one.",
+      });
+    }
+
+    // Compare OTP
+    if (user.otp !== otp) {
+      return res.json({
+        success: false,
+        message: "Invalid OTP. Please try again.",
+      });
+    }
+
+    // ✅ OTP is correct -> clear OTP
+    user.otp = null;
+    user.otpExpiry = null;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "OTP verified successfully. You can reset your password now.",
+    });
+  } catch (err) {
+    console.error("Error verifying OTP:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error, please try again" });
+  }
+});
+
+
+app.post("/reset-password", async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and new password are required" });
+    }
+
+    const user = await User.findOne({ email: email.trim() });
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Email not registered" });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password in DB
+    user.password = hashedPassword;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "Password reset successfully. You can now login with your new password.",
+    });
+  } catch (err) {
+    console.error("Error resetting password:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error. Please try again." });
   }
 });
 
@@ -342,11 +432,6 @@ app.post("/api/expenses/joingroup", async (req, res) => {
 app.get("/", (req, res) => {
   return res.send("requested accepted.!");
 });
-
-app.get("*", (req, res) => {
-  return res.status(404).send("404 Not Found!");
-});
-
 
 app.listen(3000, () => {
   console.log("server start at port 3000 number");
