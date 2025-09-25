@@ -1,8 +1,9 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const User = require("../models/User");
+const {generateOtp, sendOtpEmail} = require("../utils/sendOtp");
 
-// --- SIGNUP ---
+
 exports.signup = async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
@@ -142,3 +143,159 @@ exports.googleSignin = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+
+exports.validateEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+    console.log("Validating email:", email);
+
+    if (!email) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email required" });
+    }
+
+    const user = await User.findOne({ email: email.trim() });
+
+    if (!user) {
+      return res.json({
+        success: false,
+        action: "not_found",
+        message: "Email not registered",
+      });
+    }
+
+    if (user.authProvider === "google") {
+      return res.json({
+        success: true,
+        action: "google",
+        message:
+          "This account was created using Google. Please sign in with Google.",
+      });
+    }
+
+    if (user.authProvider === "manual") {
+      // generate OTP
+      const otp = generateOtp(); // e.g., 4-6 digit random number
+
+      // save OTP & expiry in DB
+      user.otp = otp;
+      user.otpExpiry = Date.now() + 10 * 60 * 1000; // 10 min expiry
+      await user.save();
+
+      try {
+        await sendOtpEmail(email, otp); // send email
+        return res.json({
+          success: true,
+          action: "manual",
+          message: "OTP sent to your email.",
+        });
+      } catch (mailError) {
+        console.error("Error sending OTP:", mailError);
+        return res.json({
+          success: false,
+          action: "manual",
+          message: "Failed to send OTP. Try again later.",
+        });
+      }
+    }
+
+    return res.json({
+      success: false,
+      action: "unknown",
+      message: "Auth provider not recognized.",
+    });
+  } catch (err) {
+    console.error(err);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error, please try again" });
+  }
+}
+
+exports.verifyOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and OTP are required" });
+    }
+
+    const user = await User.findOne({ email: email.trim() });
+
+    if (!user) {
+      return res.json({ success: false, message: "Email not registered" });
+    }
+
+    // Check if OTP exists & not expired
+    if (!user.otp || !user.otpExpiry || Date.now() > user.otpExpiry) {
+      return res.json({
+        success: false,
+        message: "OTP expired or not found. Please request a new one.",
+      });
+    }
+
+    // Compare OTP
+    if (user.otp !== otp) {
+      return res.json({
+        success: false,
+        message: "Invalid OTP. Please try again.",
+      });
+    }
+
+    // ✅ OTP is correct -> clear OTP
+    user.otp = null;
+    user.otpExpiry = null;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "OTP verified successfully. You can reset your password now.",
+    });
+  } catch (err) {
+    console.error("Error verifying OTP:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error, please try again" });
+  }
+}
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and new password are required" });
+    }
+
+    const user = await User.findOne({ email: email.trim() });
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Email not registered" });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password in DB
+    user.password = hashedPassword;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "Password reset successfully. You can now login with your new password.",
+    });
+  } catch (err) {
+    console.error("Error resetting password:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error. Please try again." });
+  }
+}

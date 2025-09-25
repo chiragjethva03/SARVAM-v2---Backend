@@ -18,7 +18,7 @@ async function sendOtpEmail(toEmail, otp) {
 
   // HTML email theme
   const htmlContent = `
-    <div style="font-family: Arial, sans-serif; background: #f5f7fa; padding: 20px;">
+    <div style="font-family: Arial, sans-serif; background: #f5f7fa; padding: 15px;">
       <div style="max-width: 500px; margin: auto; background: #ffffff; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); padding: 30px;">
         <h2 style="text-align: center; color: #2d89ef;">Sarvam - OTP Verification</h2>
         <p style="font-size: 16px; color: #333;">Hello,</p>
