@@ -273,10 +273,6 @@ app.get("/", (req, res) => {
   return res.send("requested accepted.!");
 });
 
-app.get("*", (req, res, next) => {
-  res.send("404! This route does not exist.");
-})
-
 app.listen(3000, () => {
   console.log("server start at port 3000 number");
 });
